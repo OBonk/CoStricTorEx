@@ -1,3 +1,19 @@
+function getHostname(url) {
+    const urlObj = new URL(url);
+    return urlObj.hostname;
+}
+
+let currentDomain = null;
+
+browser.webNavigation.onCommitted.addListener((details) => {
+    const newDomain = getHostname(details.url);
+    if (newDomain !== currentDomain) {
+        currentDomain = newDomain;
+        alert(`You navigated to a new domain: ${currentDomain}`);
+        // TODO: Implement your CoStricTor protocol here
+    }
+});
+
 browser.webRequest.onBeforeRequest.addListener(
     (details) => {
       console.log('Intercepted request to:', details.url);
