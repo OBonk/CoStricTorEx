@@ -10,40 +10,46 @@ function getHostname(url) {
 // Communicating with the server to receive the latest Bloom filters and to submit reports
 // Handling the asynchronous nature of web requests in JavaScript
 // Ensuring the security and privacy of your users
-function checkDomain(domain) {
+function checkDomain(domain,bloomFilters) {
     // Checking the domain in the primary filters
     let primaryCounts = [bloomFilters[0].query(domain), bloomFilters[1].query(domain)];
   
     // If the domain is not in either of the primary filters, continue as normal
     if (primaryCounts[0] <= 0 && primaryCounts[1] <= 0) {
-      console.log("No action required");
-      return;
+      return true // No action 
+    } else {
+      waitForLoad = true
+      return false // attempt https load
     }
   
-    // Attempt to load the webpage via HTTPS
-    let httpsLoadSuccessful = attemptHttpsLoad(domain);
-  
-    // If the page loaded successfully, no further action is required
-    if (httpsLoadSuccessful) {
-      console.log("HTTPS load successful");
-      return;
-    }
+    
+}
 
-    // If the HTTPS load was not successful, check the domain in the secondary filters
-    let secondaryCounts = [bloomFilters[2].query(domain), bloomFilters[3].query(domain)];
+function checkHTTPS(domain,bloomFilters,res) {
+  // Perform check on res to see if load success
+  let httpsLoadSuccessful = check(res)
+  // If the page loaded successfully, no further action is required
+  if (httpsLoadSuccessful) {
+    console.log("HTTPS load successful");
+    return 0;
+  }
 
-    // If the domain is in either of the secondary filters, we have a false positive
-    if (secondaryCounts[0] > 0 || secondaryCounts[1] > 0) {
-    console.log("False positive - showing standard HTTPS-only warning");
-    return;
-    }
+  // If the HTTPS load was not successful, check the domain in the secondary filters
+  let secondaryCounts = [bloomFilters[2].query(domain), bloomFilters[3].query(domain)];
 
-    // If the domain is not in the secondary filters, we assume the user is at risk
-    console.log("Possible MITM attack - showing custom warning");
+  // If the domain is in either of the secondary filters, we have a false positive
+  if (secondaryCounts[0] > 0 || secondaryCounts[1] > 0) {
+  console.log("False positive - showing standard HTTPS-only warning");
+  return 1;
+  }
+
+  // If the domain is not in the secondary filters, we assume the user is at risk
+  console.log("Possible MITM attack - showing custom warning");
+  return 2;
 }
 
 let currentDomain = null;
-
+let waitForLoad = false;
 browser.webNavigation.onCommitted.addListener((details) => {
     const newDomain = getHostname(details.url);
     if (newDomain !== currentDomain) {
@@ -69,8 +75,11 @@ browser.webNavigation.onCommitted.addListener((details) => {
 });
 browser.webRequest.onBeforeRequest.addListener(
     (details) => {
-      console.log('Intercepted request to:', details.url);
-      // Here we will check out those sweet responses
+      if (!waitForLoad){
+        console.log('Intercepted request to:', details.url);
+        // Here we will check out those sweet responses
+      }
+     
     },
     {urls: ['<all_urls>']},  
     ['blocking'] 
