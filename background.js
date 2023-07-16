@@ -39,7 +39,7 @@ async function fetchBloomFilters() {
 // Call fetchBloomFilters every 2 hours
 setInterval(fetchBloomFilters, 2 * 60 * 60 * 1000);
 
-// define your values for p, q, numWebsites, primaryThresholdModifier, and secondaryThresholdModifier
+// define your values for p, q, numWebsites, primaryThresholdModifier, and secondaryThresholdModifier, check speed of adding 
 let p = 0; 
 let q = 0;
 let numWebsites = 0;
@@ -149,6 +149,12 @@ browser.webNavigation.onCommitted.addListener((details) => {
     if (newDomain !== currentDomain) {
         currentDomain = newDomain;
         alert(`You navigated to a new domain: ${currentDomain}`);
+        let res = checkDomain(currentDomain)
+        if (!res){
+          console.log("insecure")
+        }else{
+          console.log("secure")
+        }
         // TODO: Implement your CoStricTor protocol here
         
         // Check against bloom filters
@@ -186,7 +192,7 @@ browser.webRequest.onBeforeRequest.addListener(
   
 
 
-
+// write3 baoput no extresnions
 
   // BloomFilter
 
