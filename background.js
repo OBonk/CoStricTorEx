@@ -5,27 +5,41 @@ let secondaryBloomFilter = null;
 
 async function fetchBloomFilters() {
     try {
-        // Fetch the primary Bloom filter
-        let response = await fetch('https://yourserver.com/primaryBloomFilter');
+        // Fetch parameters
+        let response = await fetch('https://costrictor-directory.obonk.repl.co/parameters');
 
         if (response.ok) { // if HTTP-status is 200-299
             // get the response body
             let json = await response.json();
-            primaryBloomFilter = new BloomFilter(json.filterSize, json.numHashes);
-            primaryBloomFilter.data = json.data;
+            p = json.p;
+            q = json.q;
+            numWebsites = json.numWebsites;
+            primaryThresholdModifier = json.primaryThresholdModifier
+            secondaryThresholdModifier = json.secondaryThresholdModifier
+        } else {
+            console.error('HTTP-Error: ' + response.status);
+        }
+        // Fetch the primary Bloom filter
+        response = await fetch('https://costrictor-directory.obonk.repl.co/primaryBloomFilter');
+
+        if (response.ok) { // if HTTP-status is 200-299
+            // get the response body
+            let json = await response.json();
+            primaryBloomFilter = new BloomFilter(json.bloomFilter.filterSize, json.bloomFilter.numHashes);
+            primaryBloomFilter.data = json.bloomFilter.data;
             console.log('Primary Bloom filter updated.');
         } else {
             console.error('HTTP-Error: ' + response.status);
         }
 
         // Fetch the secondary Bloom filter
-        response = await fetch('https://yourserver.com/secondaryBloomFilter');
+        response = await fetch('https://costrictor-directory.obonk.repl.co/secondaryBloomFilter');
 
         if (response.ok) { // if HTTP-status is 200-299
             // get the response body
             let json = await response.json();
-            secondaryBloomFilter = new BloomFilter(json.filterSize, json.numHashes);
-            secondaryBloomFilter.data = json.data;
+            secondaryBloomFilter= new BloomFilter(json.bloomFilter.filterSize, json.bloomFilter.numHashes);
+            secondaryBloomFilter.data = json.bloomFilter.data;
             console.log('Secondary Bloom filter updated.');
         } else {
             console.error('HTTP-Error: ' + response.status);
@@ -40,19 +54,19 @@ async function fetchBloomFilters() {
 setInterval(fetchBloomFilters, 2 * 60 * 60 * 1000);
 
 // define your values for p, q, numWebsites, primaryThresholdModifier, and secondaryThresholdModifier, check speed of adding 
-let p = 0; 
-let q = 0;
-let numWebsites = 0;
-let primaryThresholdModifier = 0;
-let secondaryThresholdModifier = 0;
+let p
+let q
+let numWebsites
+let primaryThresholdModifier
+let secondaryThresholdModifier
 
-function reportHsts(domain) {
-    primaryBloomFilter.add(domain, p, q);
-}
+// function reportHsts(domain) {
+//     primaryBloomFilter.add(domain, p, q);
+// }
 
-function reportHttp(domain) {
-    secondaryBloomFilter.add(domain, p, q);
-}
+// function reportHttp(domain) {
+//     secondaryBloomFilter.add(domain, p, q);
+// }
 
 function primaryTest(domain) {
     return test(domain, primaryBloomFilter, primaryThresholdModifier);
