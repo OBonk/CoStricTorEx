@@ -2,7 +2,14 @@
 // Declare the primary and secondary Bloom filter variables
 let primaryBloomFilter = null;
 let secondaryBloomFilter = null;
+// define your values for p, q, numWebsites, primaryThresholdModifier, and secondaryThresholdModifier, check speed of adding 
+let p
+let q
+let numWebsites
+let primaryThresholdModifier
+let secondaryThresholdModifier
 
+console.log("background script loaded")
 async function fetchBloomFilters() {
     try {
         // Fetch parameters
@@ -51,14 +58,8 @@ async function fetchBloomFilters() {
 }
 
 // Call fetchBloomFilters every 2 hours
-setInterval(fetchBloomFilters, 2 * 60 * 60 * 1000);
+setInterval(fetchBloomFilters, 2 *60 * 1000);
 
-// define your values for p, q, numWebsites, primaryThresholdModifier, and secondaryThresholdModifier, check speed of adding 
-let p
-let q
-let numWebsites
-let primaryThresholdModifier
-let secondaryThresholdModifier
 
 // function reportHsts(domain) {
 //     primaryBloomFilter.add(domain, p, q);
@@ -133,36 +134,41 @@ function checkDomain(domain) {
     }
 }
 
-function checkHTTPS(domain, res) {
-  // Perform check on res to see if load successful
-  let httpsLoadSuccessful = check(res); // This check function should be defined elsewhere
-  // If the page loaded successfully, no further action is required
-  if (httpsLoadSuccessful) {
-    console.log("HTTPS load successful");
-    return 0;
-  }
+// function checkHTTPS(domain, res) {
+//   // Perform check on res to see if load successful
+//   let httpsLoadSuccessful = check(res); // This check function should be defined elsewhere
+//   // If the page loaded successfully, no further action is required
+//   if (httpsLoadSuccessful) {
+//     console.log("HTTPS load successful");
+//     return 0;
+//   }
 
-  // If the HTTPS load was not successful, check the domain in the secondary filter
-  // let secondaryCount = secondaryBloomFilter.test(domain);
+//   // If the HTTPS load was not successful, check the domain in the secondary filter
+//   // let secondaryCount = secondaryBloomFilter.test(domain);
 
-  // If the domain is in the secondary filter, we have a false positive
-  if (secondaryTest(domain)) {
-    console.log("False positive - showing standard HTTPS-only warning");
-    return 1;
-  }
+//   // If the domain is in the secondary filter, we have a false positive
+//   if (secondaryTest(domain)) {
+//     console.log("False positive - showing standard HTTPS-only warning");
+//     return 1;
+//   }
 
-  // If the domain is not in the secondary filter, we assume the user is at risk
-  console.log("Possible MITM attack - showing custom warning");
-  return 2;
-}
+//   // If the domain is not in the secondary filter, we assume the user is at risk
+//   console.log("Possible MITM attack - showing custom warning");
+//   return 2;
+// }
 
 let currentDomain = null;
 let waitForLoad = false;
 browser.webNavigation.onCommitted.addListener((details) => {
+  
     const newDomain = getHostname(details.url);
+    if (newDomain==""){
+      console.log(details)
+    }
     if (newDomain !== currentDomain) {
+        console.log("new domain accessed "+newDomain)
+        console.log("old domain was" + currentDomain)
         currentDomain = newDomain;
-        alert(`You navigated to a new domain: ${currentDomain}`);
         let res = checkDomain(currentDomain)
         if (!res){
           console.log("insecure")
@@ -189,7 +195,7 @@ browser.webNavigation.onCommitted.addListener((details) => {
 });
 browser.webRequest.onBeforeRequest.addListener(
     (details) => {
-      if (!waitForLoad){
+      if (waitForLoad){
         console.log('Intercepted request to:', details.url);
         if (details.url.startsWith('http://')) {
           console.log('Insecure request:', details.url);
@@ -209,8 +215,7 @@ browser.webRequest.onBeforeRequest.addListener(
 // write3 baoput no extresnions
 
   // BloomFilter
-
-  const cryptoSubtle = window.crypto.subtle;
+const cryptoSubtle = window.crypto.subtle;
 
 class BloomFilter {
   constructor(filterSize, numHashes) {
