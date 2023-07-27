@@ -90,21 +90,27 @@ function test(domain, bloomFilter, thresholdMod) {
 fetchBloomFilters();
 function getHostname(url) {
     const urlObj = new URL(url);
-    return urlObj.hostname;
+    let hostn =  urlObj.hostname;
+    if (hostn.includes('www.')) {
+      // Remove "www." from the input string using the replace() method
+      return hostn.replace('www.', '');
+    }else{
+      return hostn
+    }
 }
 
 // P
 // TO DO:
 // Handling the probabilistic nature of Bloom filters (false positives and false negatives) - DONE
-// Implementing the noise-adding mechanisms for differential privacy - READY TO ADD
+// Implementing the noise-adding mechanisms for differential privacy - DONE
 // Communicating with the server to receive the latest Bloom filters and to submit reports - DONE
-// Handling the asynchronous nature of web requests in JavaScript
+// Handling the asynchronous nature of web requests in JavaScript - DONE
 // Ensuring the security and privacy of your users
 // Global Bloom filter variables - DONE
 
 function checkHttpsLoad(url) {
   // Create HTTPS version of the URL
-  let httpsUrl = url.replace('http://', 'https://');
+  let httpsUrl = "https://"+url;
 
   // Try to fetch the HTTPS URL
   fetch(httpsUrl, {method: 'HEAD'}).then(response => {
@@ -121,17 +127,103 @@ function checkHttpsLoad(url) {
   });
 }
 
-function checkDomain(domain) {
+async function hasHSTS(url) {
+  try {
+    const response = await fetch(url, { method: 'HEAD' });
+
+    if (response.headers.has('Strict-Transport-Security')) {
+      return true;
+    } else {
+      return false;
+    }
+  } catch (error) {
+    // If there's an error (e.g., network issue, website not reachable), return false
+    return false;
+  }
+}
+
+async function reportHSTS (url){
+  try {
+    const response = await fetch("https://report-server.obonk.repl.co", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json', // Modify this if sending different data
+      },
+      body: JSON.stringify({dom:url,type:1}), // Modify this if sending different data
+    });
+
+    if (!response.ok) {
+      // Handle errors here, e.g., throw an error or log the response status
+      throw new Error(`Request failed with status: ${response.status}`);
+    }
+
+    // Process the response if needed
+    const responseData = await response.json(); // Modify this based on the expected response data format
+
+    // Return the response data if needed
+    return responseData;
+  } catch (error) {
+    // Handle exceptions, e.g., network issues, invalid JSON, etc.
+    console.error('Error:', error);
+    return null;
+  }
+}
+async function reportHTTP (url){
+  try {
+    const response = await fetch("https://report-server.obonk.repl.co", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json', // Modify this if sending different data
+      },
+      body: JSON.stringify({dom:url,type:2}), // Modify this if sending different data
+    });
+
+    if (!response.ok) {
+      // Handle errors here, e.g., throw an error or log the response status
+      throw new Error(`Request failed with status: ${response.status}`);
+    }
+
+    // Process the response if needed
+    const responseData = await response.json(); // Modify this based on the expected response data format
+
+    // Return the response data if needed
+    return responseData;
+  } catch (error) {
+    // Handle exceptions, e.g., network issues, invalid JSON, etc.
+    console.error('Error:', error);
+    return null;
+  }
+}
+
+async function checkDomain(domain) {
     // Check the domain in the primary filter
     // let primaryCount = primaryBloomFilter.test(domain);
   
     // If the domain is not in the primary filter, continue as normal
-    if (primaryTest(domain)) {
-      return true // No action 
-    } else {
-      const https = checkHttpsLoad(domain)
-      return https // attempt HTTPS load
+    // if (primaryTest(domain)) {
+    //   return true // No action 
+    // } else {
+    //   const https = checkHttpsLoad(domain)
+    //   return https // attempt HTTPS load
+    // }
+    const preHSTS = primaryTest(domain);
+    const preHTTP = secondaryTest(domain);
+    const https = checkHttpsLoad(domain);
+    if (https){
+      const HSTS = await hasHSTS(domain)
+      if (HSTS){
+        await reportHSTS(domain);
+        return "HSTS"
+      }
+    }else if(preHSTS&&preHTTP){
+      return "Warning"
+    }else if(preHSTS&&!preHTTP){
+      return "MITM"
+    }else if(preHTTP){
+      await reportHTTP(domain)
+      return "HTTP"
     }
+
 }
 
 // function checkHTTPS(domain, res) {
@@ -160,21 +252,27 @@ function checkDomain(domain) {
 let currentDomain = null;
 let waitForLoad = false;
 browser.webNavigation.onCommitted.addListener((details) => {
-  
+    console.log("committed")
+    return;
     const newDomain = getHostname(details.url);
     if (newDomain==""){
       console.log(details)
+      return;
     }
     if (newDomain !== currentDomain) {
         console.log("new domain accessed "+newDomain)
         console.log("old domain was" + currentDomain)
         currentDomain = newDomain;
-        let res = checkDomain(currentDomain)
-        if (!res){
-          console.log("insecure")
-        }else{
-          console.log("secure")
+        waitForLoad = true;
+        checkDomain(currentDomain).then( (res)=> {
+          if (!res){
+            console.log("insecure")
+          }else{
+            console.log("secure")
+          }
         }
+        )
+        
         // TODO: Implement your CoStricTor protocol here
         
         // Check against bloom filters
@@ -195,8 +293,36 @@ browser.webNavigation.onCommitted.addListener((details) => {
 });
 browser.webRequest.onBeforeRequest.addListener(
     (details) => {
+      if (details.type === 'main_frame') {
+        console.log("WebRQ")
+        const newDomain = getHostname(details.url);
+        if (newDomain==""){
+          console.log(details)
+          return;
+        }
+        if (newDomain !== currentDomain) {
+            console.log("new domain accessed "+newDomain)
+            console.log("old domain was" + currentDomain)
+            currentDomain = newDomain;
+            waitForLoad = true;
+            checkDomain(currentDomain).then( (res)=> {
+              if (!res){
+                console.log("insecure")
+              }else{
+                console.log("secure")
+              }
+            }
+            )
+        }
+      }else{
+        return;
+      }
+      
       if (waitForLoad){
         console.log('Intercepted request to:', details.url);
+        if(getHostname(details.url)==currentDomain){
+          console.log("bingo")
+        }
         if (details.url.startsWith('http://')) {
           console.log('Insecure request:', details.url);
           // Optionally, you can redirect the request to HTTPS
