@@ -10,10 +10,11 @@
       "webNavigation",
       "webRequest",
       "webRequestBlocking",
+      "tabs",
       "<all_urls>"
     ],
     "background": {
-      "scripts": ["background.js"],
+      "scripts": ["background.js","long_bundled.js"],
       "persistent": true
     },
     "browser_action": {

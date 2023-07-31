@@ -34,6 +34,7 @@ async function fetchBloomFilters() {
             let json = await response.json();
             primaryBloomFilter = new BloomFilter(json.bloomFilter.filterSize, json.bloomFilter.numHashes);
             primaryBloomFilter.data = json.bloomFilter.data;
+            primaryBloomFilter.count = json.bloomFilter.count;
             console.log('Primary Bloom filter updated.');
         } else {
             console.error('HTTP-Error: ' + response.status);
@@ -47,6 +48,7 @@ async function fetchBloomFilters() {
             let json = await response.json();
             secondaryBloomFilter= new BloomFilter(json.bloomFilter.filterSize, json.bloomFilter.numHashes);
             secondaryBloomFilter.data = json.bloomFilter.data;
+            secondaryBloomFilter.count = json.bloomFilter.count;
             console.log('Secondary Bloom filter updated.');
         } else {
             console.error('HTTP-Error: ' + response.status);
@@ -58,7 +60,7 @@ async function fetchBloomFilters() {
 }
 
 // Call fetchBloomFilters every 2 hours
-setInterval(fetchBloomFilters, 2 *60 * 1000);
+setInterval(fetchBloomFilters, 2 *60 *60 * 1000);
 
 
 // function reportHsts(domain) {
@@ -69,20 +71,23 @@ setInterval(fetchBloomFilters, 2 *60 * 1000);
 //     secondaryBloomFilter.add(domain, p, q);
 // }
 
-function primaryTest(domain) {
-    return test(domain, primaryBloomFilter, primaryThresholdModifier);
+async function primaryTest(domain) {
+    let res = await test(domain, primaryBloomFilter, primaryThresholdModifier);
+    return res;
 }
 
-function secondaryTest(domain) {
-    return test(domain, secondaryBloomFilter, secondaryThresholdModifier);
+async function secondaryTest(domain) {
+  let res = await test(domain, secondaryBloomFilter, secondaryThresholdModifier);
+  return res;
 }
 
-function test(domain, bloomFilter, thresholdMod) {
-    let count = bloomFilter.test(domain);
+async function test(domain, bloomFilter, thresholdMod) {
+    let count = await bloomFilter.test(domain);
     let numInsertions = bloomFilter.count;
     
     let adjustedCount = (count - p * numInsertions)/(q-p);
     let threshold = (numInsertions/numWebsites) * thresholdMod;
+    console.log(`testing adjusted ${adjustedCount},${threshold},bloom count${numInsertions}, thresholdMod ${thresholdMod}`)
     return adjustedCount >= threshold;
 }
 
@@ -108,7 +113,7 @@ function getHostname(url) {
 // Ensuring the security and privacy of your users
 // Global Bloom filter variables - DONE
 
-function checkHttpsLoad(url) {
+async function checkHttpsLoad(url) {
   // Create HTTPS version of the URL
   let httpsUrl = "https://"+url;
 
@@ -206,21 +211,26 @@ async function checkDomain(domain) {
     //   const https = checkHttpsLoad(domain)
     //   return https // attempt HTTPS load
     // }
-    const preHSTS = primaryTest(domain);
-    const preHTTP = secondaryTest(domain);
-    const https = checkHttpsLoad(domain);
+    const preHSTS = await primaryTest(domain);
+    const preHTTP = await secondaryTest(domain);
+    const https = await checkHttpsLoad(domain);
+    console.log(`Https res was ${https},preHSTS was ${preHSTS}, preHTTP was ${preHTTP}`)
     if (https){
       const HSTS = await hasHSTS(domain)
       if (HSTS){
         await reportHSTS(domain);
+        console.log("HSTS")
         return "HSTS"
       }
     }else if(preHSTS&&preHTTP){
+      console.log("Warning")
       return "Warning"
     }else if(preHSTS&&!preHTTP){
+      console.log("MITM")
       return "MITM"
     }else if(preHTTP){
       await reportHTTP(domain)
+      console.log("HTTP")
       return "HTTP"
     }
 
@@ -251,85 +261,72 @@ async function checkDomain(domain) {
 
 let currentDomain = null;
 let waitForLoad = false;
-browser.webNavigation.onCommitted.addListener((details) => {
-    console.log("committed")
-    return;
-    const newDomain = getHostname(details.url);
-    if (newDomain==""){
-      console.log(details)
-      return;
-    }
-    if (newDomain !== currentDomain) {
-        console.log("new domain accessed "+newDomain)
-        console.log("old domain was" + currentDomain)
-        currentDomain = newDomain;
-        waitForLoad = true;
-        checkDomain(currentDomain).then( (res)=> {
-          if (!res){
-            console.log("insecure")
-          }else{
-            console.log("secure")
-          }
-        }
-        )
-        
-        // TODO: Implement your CoStricTor protocol here
-        
-        // Check against bloom filters
 
-        // Decision from bloom filters
-        // Not in primary, chill dawg
-        // If in primary (not secondary), load
-        // If in both, warning! HTTPS only
+let originalUrl = null;
 
-        // Deal with response (assuming this site is in primary and we attempt to load)
-        // If we load successfully over HTTPS, your uncle = bob
-        // If we do not load over HTTPS check secondary filter if not in there then false +ive, display HTTPS-Only warning?
-        // If the domain in primary but we do not over HTTPS, this is sus mitm warning?
-
-        // Report: In the background, if the we accessed a domain that has HSTS enabled or does not support HTTPS,
-        // create a report. The report is sent back to central server to be added to the Bloom filter for the current epoch.
-    }
-});
 browser.webRequest.onBeforeRequest.addListener(
-    (details) => {
-      if (details.type === 'main_frame') {
-        console.log("WebRQ")
-        const newDomain = getHostname(details.url);
-        if (newDomain==""){
-          console.log(details)
-          return;
-        }
-        if (newDomain !== currentDomain) {
-            console.log("new domain accessed "+newDomain)
-            console.log("old domain was" + currentDomain)
-            currentDomain = newDomain;
-            waitForLoad = true;
-            checkDomain(currentDomain).then( (res)=> {
-              if (!res){
-                console.log("insecure")
-              }else{
-                console.log("secure")
-              }
-            }
-            )
-        }
-      }else{
-        return;
+  (details) => {
+    if (details.type === 'main_frame') {
+      const newDomain = getHostname(details.url);
+      if (newDomain !== currentDomain) {
+        currentDomain = newDomain;
+        originalUrl = details.url; // store the original url
+        // redirect to the holding page
+        return { redirectUrl: browser.extension.getURL('holding.html') };
       }
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['blocking']
+);
+
+// somewhere else, after the holding page is loaded
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url === browser.extension.getURL('holding.html')) {
+    let res = await checkDomain(currentDomain);
+    console.log("result is: "+res);
+    // based on the result, either block or continue with the original request
+    if (res === 'some_condition') {
+      browser.tabs.update(tabId, {url: originalUrl});
+    } else {
+      // block or redirect to some other url
+    }
+  }
+});
+// browser.webRequest.onBeforeRequest.addListener(
+//     async (details) => {
+//       if (details.type === 'main_frame') {
+//         console.log("WebRQ")
+//         const newDomain = getHostname(details.url);
+//         if (newDomain==""){
+//           console.log(details)
+//           return;
+//         }
+//         if (newDomain !== currentDomain) {
+//             console.log("new domain accessed "+newDomain)
+//             console.log("old domain was" + currentDomain)
+//             currentDomain = newDomain;
+//             waitForLoad = true;
+//             res = await checkDomain(currentDomain)
+//             console.log("result is: "+res)
+//             return
+//         }
+//       }else{
+//         return;
+//       }
       
-      if (waitForLoad){
-        console.log('Intercepted request to:', details.url);
-        if(getHostname(details.url)==currentDomain){
-          console.log("bingo")
-        }
-        if (details.url.startsWith('http://')) {
-          console.log('Insecure request:', details.url);
-          // Optionally, you can redirect the request to HTTPS
-          let redirectUrl = details.url.replace('http://', 'https://');
-          return {redirectUrl: redirectUrl};
-        }
-      }
+      // if (waitForLoad){
+      //   console.log('Intercepted request to:', details.url);
+      //   if(getHostname(details.url)==currentDomain){
+      //     console.log("bingo")
+      //   }
+      //   if (details.url.startsWith('http://')) {
+      //     console.log('Insecure request:', details.url);
+      //     // Optionally, you can redirect the request to HTTPS
+      //     let redirectUrl = details.url.replace('http://', 'https://');
+      //     return {redirectUrl: redirectUrl};
+      //   }
+      // }
      
     },
     {urls: ['<all_urls>']},  
@@ -342,69 +339,72 @@ browser.webRequest.onBeforeRequest.addListener(
 
   // BloomFilter
 const cryptoSubtle = window.crypto.subtle;
-
+// var Long = require('long');
 class BloomFilter {
   constructor(filterSize, numHashes) {
-    this.data = new Array(filterSize).fill(0);
-    this.filterSize = filterSize;
-    this.numHashes = numHashes;
-    this.count = 0;
-  }
-
-  async add(data, p, q) {
-    const [lower, upper] = await this.hashKernel(data);
-    const adq = Math.floor(q * 4294967295);
-    const adp = Math.floor(p * 4294967295);
-    const newData = new Array(this.filterSize).fill(0);
-    for (let i = 0; i < this.numHashes; i++) {
-      const trueBit = (lower + upper * i) % this.filterSize;
-      newData[trueBit] += 1;
-    }
-    let falseBits = 0;
-    for (let i = 0; i < this.filterSize; i++) {
-      const r = Math.random();
-      if (newData[i] === 1) {
-        if (r >= adq) {
-          newData[i] = 0;
-        }
-      } else {
-        if (r < adp) {
-          newData[i] = 1;
-          falseBits += 1;
-        }
-      }
-      this.data[i] += newData[i];
-    }
-    if (falseBits > 0) {
-      console.log(falseBits);
-    }
-    this.count++;
-    return this;
-  }
-
-  async test(data) {
-    const [lower, upper] = await this.hashKernel(data);
-    const result = new Array(this.numHashes);
-    for (let i = 0; i < this.numHashes; i++) {
-      const trueBit = (lower + upper * i) % this.filterSize;
-      result[i] = this.data[trueBit];
-    }
-    let min = 0;
-    for (let i = 0; i < result.length; i++) {
-      const e = result[i];
-      if (i === 0 || e < min) {
-        min = e;
-      }
-    }
-    return min;
+      this.data = Array(filterSize).fill(0);
+      this.filterSize = filterSize;
+      this.numHashes = numHashes;
+      this.count = 0;
   }
 
   async hashKernel(data) {
-    const encoder = new TextEncoder();
-    const hashBuffer = await cryptoSubtle.digest('SHA-256', encoder.encode(data));
-    const hashArray = Array.from(new Uint32Array(hashBuffer));
-    const upper = hashArray[0];
-    const lower = hashArray[1];
-    return [lower, upper];
+      const buffer = new TextEncoder().encode(data);
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', buffer);
+      const hashArray = new Uint8Array(hashBuffer);
+      const hashNum = Long.fromBytes(hashArray, true);
+      const upper = hashNum.and(Long.fromInt(0xffffffff)).toInt();
+      const lower = hashNum.shru(32).and(Long.fromInt(0xffffffff)).toInt();
+      return [upper, lower];
   }
+  async add(data, p, q) {
+    const [lower, upper] = await this.hashKernel(data);
+    const adq = Math.floor(q * 4294967295.0);
+    const adp = Math.floor(p * 4294967295.0);
+    const newData = Array(this.filterSize).fill(0);
+    let falseBits = 0;
+
+    for (let i = 0; i < this.numHashes; i++) {
+        const trueBit = ((lower + upper * i) % this.filterSize);
+        newData[trueBit] += 1;
+    }
+
+    for (let i = 0; i < this.filterSize; i++) {
+        const r = Math.floor(Math.random() * 4294967295.0);
+        if (newData[i] === 1) {
+            if (r >= adq) {
+                newData[i] = 0;
+            }
+        } else {
+            if (r < adp) {
+                newData[i] = 1;
+                falseBits += 1;
+            }
+        }
+        this.data[i] += newData[i];
+    }
+    this.count++;
+
+    return this;
+    }
+
+    async test(data) {
+        const [lower, upper] = await this.hashKernel(data);
+        const result = Array(this.numHashes).fill(0);
+        let min = 0;
+
+        for (let i = 0; i < this.numHashes; i++) {
+            const trueBit = ((lower + upper * i) % this.filterSize);
+            result[i] = this.data[trueBit];
+        }
+
+        for (let i = 0; i < result.length; i++) {
+            if (i === 0 || result[i] < min) {
+                min = result[i];
+            }
+        }
+
+        return min;
+    }
 }
+
