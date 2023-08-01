@@ -222,6 +222,7 @@ async function checkDomain(domain) {
         console.log("HSTS")
         return "HSTS"
       }
+      return "HTTPS"
     }else if(preHSTS&&preHTTP){
       console.log("Warning")
       return "Warning"
@@ -262,58 +263,55 @@ async function checkDomain(domain) {
 let currentDomain = null;
 let waitForLoad = false;
 
-let originalUrl = null;
+// let originalUrl = null;
+
+// browser.webRequest.onBeforeRequest.addListener(
+//   (details) => {
+//     if (details.type === 'main_frame') {
+//       const newDomain = getHostname(details.url);
+//       if (newDomain !== currentDomain) {
+//         currentDomain = newDomain;
+//         originalUrl = details.url; // store the original url
+//         // redirect to the holding page
+//         return { redirectUrl: browser.extension.getURL('holding.html') };
+//       }
+//     }
+//   },
+//   { urls: ['<all_urls>'] },
+//   ['blocking']
+// );
 
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if (details.type === 'main_frame') {
-      const newDomain = getHostname(details.url);
-      if (newDomain !== currentDomain) {
-        currentDomain = newDomain;
-        originalUrl = details.url; // store the original url
-        // redirect to the holding page
-        return { redirectUrl: browser.extension.getURL('holding.html') };
+    return new Promise(async (resolve) => {
+      if (details.type === 'main_frame') {
+        const newDomain = getHostname(details.url);
+        if (newDomain !== currentDomain) {
+          currentDomain = newDomain;
+          let res = await checkDomain(currentDomain);
+          console.log("result is: "+res);
+          // based on the result, either block or continue with the request
+          if (res === "HSTS" ||res === "HTTPS")  {
+            resolve({}); // continue with the request
+          } else {
+            resolve({cancel: true}); // block the request
+          }
+        } else {
+          resolve({}); // continue with the request
+        }
+      } else {
+        resolve({}); // continue with the request
       }
-    }
+    });
   },
-  { urls: ['<all_urls>'] },
+  {urls: ['<all_urls>']},
   ['blocking']
 );
 
-// somewhere else, after the holding page is loaded
-browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url === browser.extension.getURL('holding.html')) {
-    let res = await checkDomain(currentDomain);
-    console.log("result is: "+res);
-    // based on the result, either block or continue with the original request
-    if (res === 'some_condition') {
-      browser.tabs.update(tabId, {url: originalUrl});
-    } else {
-      // block or redirect to some other url
-    }
-  }
-});
-// browser.webRequest.onBeforeRequest.addListener(
-//     async (details) => {
-//       if (details.type === 'main_frame') {
-//         console.log("WebRQ")
-//         const newDomain = getHostname(details.url);
-//         if (newDomain==""){
-//           console.log(details)
-//           return;
-//         }
-//         if (newDomain !== currentDomain) {
-//             console.log("new domain accessed "+newDomain)
-//             console.log("old domain was" + currentDomain)
-//             currentDomain = newDomain;
-//             waitForLoad = true;
-//             res = await checkDomain(currentDomain)
-//             console.log("result is: "+res)
-//             return
-//         }
-//       }else{
-//         return;
-//       }
+
+
+
+
       
       // if (waitForLoad){
       //   console.log('Intercepted request to:', details.url);
@@ -327,11 +325,6 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
       //     return {redirectUrl: redirectUrl};
       //   }
       // }
-     
-    },
-    {urls: ['<all_urls>']},  
-    ['blocking'] 
-  );
   
 
 
