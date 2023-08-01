@@ -84,7 +84,7 @@ async function secondaryTest(domain) {
 async function test(domain, bloomFilter, thresholdMod) {
     let count = await bloomFilter.test(domain);
     let numInsertions = bloomFilter.count;
-    
+    console.log(`Q:${q},P:${p},Inserts:${numInsertions},count:${count}`)
     let adjustedCount = (count - p * numInsertions)/(q-p);
     let threshold = (numInsertions/numWebsites) * thresholdMod;
     console.log(`testing adjusted ${adjustedCount},${threshold},bloom count${numInsertions}, thresholdMod ${thresholdMod}`)
@@ -118,38 +118,45 @@ async function checkHttpsLoad(url) {
   let httpsUrl = "https://"+url;
 
   // Try to fetch the HTTPS URL
-  fetch(httpsUrl, {method: 'HEAD'}).then(response => {
-    if (response.ok) {
-      console.log('HTTPS is supported:', httpsUrl);
-      return true;
-    } else {
-      console.log('HTTPS is not supported:', httpsUrl);
-      return false;
-    }
-  }).catch(error => {
-    console.log('Fetch failed:', error);
-    return false;
-  });
-}
-
-async function hasHSTS(url) {
   try {
-    const response = await fetch(url, { method: 'HEAD' });
-
+    const response = await fetch(httpsUrl, {
+        method: 'HEAD',
+        redirect: 'follow',
+    });
+    // Check for HSTS
     if (response.headers.has('Strict-Transport-Security')) {
-      return true;
+        return "HSTS"
     } else {
-      return false;
+        return "HTTPS"
     }
-  } catch (error) {
-    // If there's an error (e.g., network issue, website not reachable), return false
-    return false;
-  }
+    } catch (error) {
+      try{
+        const responseHTTP = await fetch('http://' + website, { method: 'HEAD' });
+        return "HTTP"
+      } catch(errorHTTP) {
+        return false
+      }
+    }
 }
+
+// async function hasHSTS(url) {
+//   try {
+//     const response = await fetch(url, { method: 'HEAD' });
+
+//     if (response.headers.has('Strict-Transport-Security')) {
+//       return true;
+//     } else {
+//       return false;
+//     }
+//   } catch (error) {
+//     // If there's an error (e.g., network issue, website not reachable), return false
+//     return false;
+//   }
+// }
 
 async function reportHSTS (url){
   try {
-    const response = await fetch("https://report-server.obonk.repl.co", {
+    const response = await fetch("https://report-server.obonk.repl.co/report", {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json', // Modify this if sending different data
@@ -175,7 +182,7 @@ async function reportHSTS (url){
 }
 async function reportHTTP (url){
   try {
-    const response = await fetch("https://report-server.obonk.repl.co", {
+    const response = await fetch("https://report-server.obonk.repl.co/report", {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json', // Modify this if sending different data
@@ -215,9 +222,9 @@ async function checkDomain(domain) {
     const preHTTP = await secondaryTest(domain);
     const https = await checkHttpsLoad(domain);
     console.log(`Https res was ${https},preHSTS was ${preHSTS}, preHTTP was ${preHTTP}`)
-    if (https){
-      const HSTS = await hasHSTS(domain)
-      if (HSTS){
+    if (https != "HTTP"){
+      // const HSTS = await hasHSTS(domain)
+      if (https =="HSTS"){
         await reportHSTS(domain);
         console.log("HSTS")
         return "HSTS"
