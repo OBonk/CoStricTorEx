@@ -14,7 +14,6 @@ async function fetchBloomFilters() {
     try {
         // Fetch parameters
         let response = await fetch('https://costrictor-directory.obonk.repl.co/parameters');
-
         if (response.ok) { // if HTTP-status is 200-299
             // get the response body
             let json = await response.json();
@@ -28,7 +27,6 @@ async function fetchBloomFilters() {
         }
         // Fetch the primary Bloom filter
         response = await fetch('https://costrictor-directory.obonk.repl.co/primaryBloomFilter');
-
         if (response.ok) { // if HTTP-status is 200-299
             // get the response body
             let json = await response.json();
@@ -42,7 +40,6 @@ async function fetchBloomFilters() {
 
         // Fetch the secondary Bloom filter
         response = await fetch('https://costrictor-directory.obonk.repl.co/secondaryBloomFilter');
-
         if (response.ok) { // if HTTP-status is 200-299
             // get the response body
             let json = await response.json();
@@ -115,13 +112,13 @@ function getHostname(url) {
 
 async function checkHttpsLoad(url) {
   // Create HTTPS version of the URL
-  let httpsUrl = "https://"+url;
+  let httpsUrl = "https://www."+url;
 
   // Try to fetch the HTTPS URL
   try {
     const response = await fetch(httpsUrl, {
         method: 'HEAD',
-        redirect: 'follow',
+        // redirect: 'follow',
     });
     // Check for HSTS
     if (response.headers.has('Strict-Transport-Security')) {
@@ -244,49 +241,11 @@ async function checkDomain(domain) {
 
 }
 
-// function checkHTTPS(domain, res) {
-//   // Perform check on res to see if load successful
-//   let httpsLoadSuccessful = check(res); // This check function should be defined elsewhere
-//   // If the page loaded successfully, no further action is required
-//   if (httpsLoadSuccessful) {
-//     console.log("HTTPS load successful");
-//     return 0;
-//   }
 
-//   // If the HTTPS load was not successful, check the domain in the secondary filter
-//   // let secondaryCount = secondaryBloomFilter.test(domain);
-
-//   // If the domain is in the secondary filter, we have a false positive
-//   if (secondaryTest(domain)) {
-//     console.log("False positive - showing standard HTTPS-only warning");
-//     return 1;
-//   }
-
-//   // If the domain is not in the secondary filter, we assume the user is at risk
-//   console.log("Possible MITM attack - showing custom warning");
-//   return 2;
-// }
 
 let currentDomain = null;
 let waitForLoad = false;
 
-// let originalUrl = null;
-
-// browser.webRequest.onBeforeRequest.addListener(
-//   (details) => {
-//     if (details.type === 'main_frame') {
-//       const newDomain = getHostname(details.url);
-//       if (newDomain !== currentDomain) {
-//         currentDomain = newDomain;
-//         originalUrl = details.url; // store the original url
-//         // redirect to the holding page
-//         return { redirectUrl: browser.extension.getURL('holding.html') };
-//       }
-//     }
-//   },
-//   { urls: ['<all_urls>'] },
-//   ['blocking']
-// );
 
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
@@ -340,71 +299,156 @@ browser.webRequest.onBeforeRequest.addListener(
   // BloomFilter
 const cryptoSubtle = window.crypto.subtle;
 // var Long = require('long');
+class FnvHash {
+  constructor() {
+      this.hash = 0xcbf29ce484222325n;
+  }
+
+  update(data) {
+      for(let i = 0; i < data.length; i++) {
+          this.hash ^= BigInt(data.charCodeAt(i));
+          this.hash *= 0x100000001b3n;
+      }
+
+      return this;
+  }
+
+  digest() {
+      return this.hash & 0xffffffffffffffffn;
+  }
+
+  reset() {
+      this.hash = 0xcbf29ce484222325n;
+  }
+}
+
 class BloomFilter {
   constructor(filterSize, numHashes) {
       this.data = Array(filterSize).fill(0);
+      this.hash = new FnvHash();
       this.filterSize = filterSize;
       this.numHashes = numHashes;
       this.count = 0;
   }
 
-  async hashKernel(data) {
-      const buffer = new TextEncoder().encode(data);
-      const hashBuffer = await window.crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = new Uint8Array(hashBuffer);
-      const hashNum = Long.fromBytes(hashArray, true);
-      const upper = hashNum.and(Long.fromInt(0xffffffff)).toInt();
-      const lower = hashNum.shru(32).and(Long.fromInt(0xffffffff)).toInt();
+  add(data, p, q) {
+      let [lower, upper] = this.hashKernel(data);
+      let adq = q * 4294967295.0;
+      let adp = p * 4294967295.0;
+      let newData = Array(this.filterSize).fill(0);
+
+      for(let i = 0; i < this.numHashes; i++) {
+          let trueBit = (lower+upper*i)%this.filterSize;
+          newData[trueBit]++;
+      }
+
+      let falseBits = 0;
+      for(let i = 0; i < this.filterSize; i++) {
+          let r = Math.random();
+          if(newData[i] == 1) {
+              if(r >= adq) {
+                  newData[i] = 0;
+              }
+          } else {
+              if(r < adp) {
+                  newData[i] = 1;
+                  falseBits++;
+              }
+          }
+
+          this.data[i] += newData[i];
+      }
+
+      this.count++;
+
+      return this;
+  }
+
+  test(data) {
+      let [lower, upper] = this.hashKernel(data);
+      let result = Array(this.numHashes).fill(0);
+      for(let i = 0; i < this.numHashes; i++) {
+          let trueBit = (lower+upper*i)%this.filterSize;
+          result[i] = this.data[trueBit];
+      }
+
+      return Math.min(...result);
+  }
+
+  hashKernel(data) {
+      let sum = this.hash.update(data).digest();
+      this.hash.reset();
+      let upper = Number(sum & 0xffffffffn);
+      let lower = Number((sum >> 32n) & 0xffffffffn);
+
       return [upper, lower];
   }
-  async add(data, p, q) {
-    const [lower, upper] = await this.hashKernel(data);
-    const adq = Math.floor(q * 4294967295.0);
-    const adp = Math.floor(p * 4294967295.0);
-    const newData = Array(this.filterSize).fill(0);
-    let falseBits = 0;
-
-    for (let i = 0; i < this.numHashes; i++) {
-        const trueBit = ((lower + upper * i) % this.filterSize);
-        newData[trueBit] += 1;
-    }
-
-    for (let i = 0; i < this.filterSize; i++) {
-        const r = Math.floor(Math.random() * 4294967295.0);
-        if (newData[i] === 1) {
-            if (r >= adq) {
-                newData[i] = 0;
-            }
-        } else {
-            if (r < adp) {
-                newData[i] = 1;
-                falseBits += 1;
-            }
-        }
-        this.data[i] += newData[i];
-    }
-    this.count++;
-
-    return this;
-    }
-
-    async test(data) {
-        const [lower, upper] = await this.hashKernel(data);
-        const result = Array(this.numHashes).fill(0);
-        let min = 0;
-
-        for (let i = 0; i < this.numHashes; i++) {
-            const trueBit = ((lower + upper * i) % this.filterSize);
-            result[i] = this.data[trueBit];
-        }
-
-        for (let i = 0; i < result.length; i++) {
-            if (i === 0 || result[i] < min) {
-                min = result[i];
-            }
-        }
-
-        return min;
-    }
 }
+// class BloomFilter {
+//   constructor(filterSize, numHashes) {
+//       this.data = Array(filterSize).fill(0);
+//       this.filterSize = filterSize;
+//       this.numHashes = numHashes;
+//       this.count = 0;
+//   }
+
+//   async hashKernel(data) {
+//       const buffer = new TextEncoder().encode(data);
+//       const hashBuffer = await window.crypto.subtle.digest('SHA-256', buffer);
+//       const hashArray = new Uint8Array(hashBuffer);
+//       const hashNum = Long.fromBytes(hashArray, true);
+//       const upper = hashNum.and(Long.fromInt(0xffffffff)).toInt();
+//       const lower = hashNum.shru(32).and(Long.fromInt(0xffffffff)).toInt();
+//       return [upper, lower];
+//   }
+//   async add(data, p, q) {
+//     const [lower, upper] = await this.hashKernel(data);
+//     const adq = Math.floor(q * 4294967295.0);
+//     const adp = Math.floor(p * 4294967295.0);
+//     const newData = Array(this.filterSize).fill(0);
+//     let falseBits = 0;
+
+//     for (let i = 0; i < this.numHashes; i++) {
+//         const trueBit = ((lower + upper * i) % this.filterSize);
+//         newData[trueBit] += 1;
+//     }
+
+//     for (let i = 0; i < this.filterSize; i++) {
+//         const r = Math.floor(Math.random() * 4294967295.0);
+//         if (newData[i] === 1) {
+//             if (r >= adq) {
+//                 newData[i] = 0;
+//             }
+//         } else {
+//             if (r < adp) {
+//                 newData[i] = 1;
+//                 falseBits += 1;
+//             }
+//         }
+//         this.data[i] += newData[i];
+//     }
+//     this.count++;
+
+//     return this;
+//     }
+
+//     async test(data) {
+//         const [lower, upper] = await this.hashKernel(data);
+//         const result = Array(this.numHashes).fill(0);
+//         let min = 0;
+
+//         for (let i = 0; i < this.numHashes; i++) {
+//             const trueBit = ((lower + upper * i) % this.filterSize);
+//             result[i] = this.data[trueBit];
+//         }
+
+//         for (let i = 0; i < result.length; i++) {
+//             if (i === 0 || result[i] < min) {
+//                 min = result[i];
+//             }
+//         }
+
+//         return min;
+//     }
+// }
 
