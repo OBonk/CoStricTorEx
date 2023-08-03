@@ -21,5 +21,8 @@
       "default_icon": {
         "48": "icon.png"
       }
-    }
+    },
+    "web_accessible_resources": [
+      "holding.html"
+    ]
   }

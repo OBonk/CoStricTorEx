@@ -9,6 +9,19 @@ let numWebsites
 let primaryThresholdModifier
 let secondaryThresholdModifier
 
+
+function convertStringToBigIntObj(obj) {
+  let newObj = {};
+  for (let key in obj) {
+    if (typeof obj[key] === 'string' && obj[key].endsWith('n')) {
+      newObj[key] = BigInt(obj[key].slice(0, -1)); // Convert string back to BigInt
+    } else {
+      newObj[key] = obj[key];
+    }
+  }
+  return newObj;
+}
+
 console.log("background script loaded")
 async function fetchBloomFilters() {
     try {
@@ -27,29 +40,29 @@ async function fetchBloomFilters() {
         }
         // Fetch the primary Bloom filter
         response = await fetch('https://costrictor-directory.obonk.repl.co/primaryBloomFilter');
-        if (response.ok) { // if HTTP-status is 200-299
-            // get the response body
-            let json = await response.json();
-            primaryBloomFilter = new BloomFilter(json.bloomFilter.filterSize, json.bloomFilter.numHashes);
-            primaryBloomFilter.data = json.bloomFilter.data;
-            primaryBloomFilter.count = json.bloomFilter.count;
-            console.log('Primary Bloom filter updated.');
+        if (response.ok) {
+          let json = await response.json();
+          json.bloomFilter = JSON.parse(json.bloomFilter);
+          console.log(json)
+          primaryBloomFilter = new BloomFilter(json.bloomFilter.filterSize, json.bloomFilter.numHashes);
+          primaryBloomFilter.data = json.bloomFilter.data;
+          primaryBloomFilter.count = json.bloomFilter.count; // Convert string back to BigInt
         } else {
-            console.error('HTTP-Error: ' + response.status);
+          console.error('HTTP-Error: ' + response.status);
         }
 
         // Fetch the secondary Bloom filter
         response = await fetch('https://costrictor-directory.obonk.repl.co/secondaryBloomFilter');
-        if (response.ok) { // if HTTP-status is 200-299
-            // get the response body
-            let json = await response.json();
-            secondaryBloomFilter= new BloomFilter(json.bloomFilter.filterSize, json.bloomFilter.numHashes);
-            secondaryBloomFilter.data = json.bloomFilter.data;
-            secondaryBloomFilter.count = json.bloomFilter.count;
-            console.log('Secondary Bloom filter updated.');
+        if (response.ok) {
+          let json = await response.json();
+          json.bloomFilter = JSON.parse(json.bloomFilter);
+          secondaryBloomFilter= new BloomFilter(json.bloomFilter.filterSize, json.bloomFilter.numHashes);
+          secondaryBloomFilter.data = json.bloomFilter.data;
+          secondaryBloomFilter.count = json.bloomFilter.count;// Convert string back to BigInt
         } else {
-            console.error('HTTP-Error: ' + response.status);
+          console.error('HTTP-Error: ' + response.status);
         }
+
 
     } catch (error) {
         console.error('Error fetching Bloom filters:', error);
@@ -254,13 +267,15 @@ browser.webRequest.onBeforeRequest.addListener(
         const newDomain = getHostname(details.url);
         if (newDomain !== currentDomain) {
           currentDomain = newDomain;
+          // redirect to holding page immediately
+          resolve({redirectUrl: browser.runtime.getURL("/holding-page.html")});
           let res = await checkDomain(currentDomain);
           console.log("result is: "+res);
-          // based on the result, either block or continue with the request
-          if (res === "HSTS" ||res === "HTTPS")  {
-            resolve({}); // continue with the request
+          // based on the result, update the tab to go to the appropriate page
+          if (res === "HSTS" || res === "HTTPS")  {
+            browser.tabs.update(details.tabId, {url: details.url});
           } else {
-            resolve({cancel: true}); // block the request
+            browser.tabs.update(details.tabId, {url: "http://example.com/block-page.html"});
           }
         } else {
           resolve({}); // continue with the request
