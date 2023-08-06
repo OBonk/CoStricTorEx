@@ -23,6 +23,9 @@
       }
     },
     "web_accessible_resources": [
-      "holding.html"
+      "holding-page.html",
+      "low-warn.html",
+      "high-warn.html",
+      "warning.js"
     ]
   }

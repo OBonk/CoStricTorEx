@@ -137,6 +137,7 @@ async function checkHttpsLoad(url) {
     if (response.headers.has('Strict-Transport-Security')) {
         return "HSTS"
     } else {
+        console.log(response.headers)
         return "HTTPS"
     }
     } catch (error) {
@@ -144,7 +145,7 @@ async function checkHttpsLoad(url) {
         const responseHTTP = await fetch('http://' + website, { method: 'HEAD' });
         return "HTTP"
       } catch(errorHTTP) {
-        return false
+        return "HTTP"
       }
     }
 }
@@ -250,32 +251,41 @@ async function checkDomain(domain) {
       await reportHTTP(domain)
       console.log("HTTP")
       return "HTTP"
+    }else{
+      await reportHTTP(domain)
+      console.log("HTTP")
+      return "HTTP"
     }
-
+  
 }
 
 
 
 let currentDomain = null;
 let waitForLoad = false;
-
-
+let tabID = null;
+let curUrl = null;
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
     return new Promise(async (resolve) => {
       if (details.type === 'main_frame') {
         const newDomain = getHostname(details.url);
         if (newDomain !== currentDomain) {
+          curUrl = details.url
           currentDomain = newDomain;
           // redirect to holding page immediately
-          resolve({redirectUrl: browser.runtime.getURL("/holding-page.html")});
+          resolve({redirectUrl: browser.runtime.getURL("holding-page.html")});
           let res = await checkDomain(currentDomain);
           console.log("result is: "+res);
           // based on the result, update the tab to go to the appropriate page
-          if (res === "HSTS" || res === "HTTPS")  {
+          if (res === "HSTS" || res === "HTTPS" || res === "HTTP" )  {
             browser.tabs.update(details.tabId, {url: details.url});
-          } else {
-            browser.tabs.update(details.tabId, {url: "http://example.com/block-page.html"});
+          } else if(res==="Warning") {
+            tabID = details.tabId
+            browser.tabs.update(details.tabId, {url: browser.runtime.getURL("low-warn.html")});
+          }else if(res==="MITM") {
+            tabID = details.tabId
+            browser.tabs.update(details.tabId, {url: browser.runtime.getURL("high-warn.html")});
           }
         } else {
           resolve({}); // continue with the request
@@ -288,7 +298,15 @@ browser.webRequest.onBeforeRequest.addListener(
   {urls: ['<all_urls>']},
   ['blocking']
 );
-
+browser.runtime.onMessage.addListener((message) => {
+  if (message.command === "goBack") {
+    // Go back to the previous page
+    browser.tabs.update(tabID, {url: "https://www.torproject.org/"});
+  } else if (message.command === "proceedUnsafe") {
+    // Proceed to the unsafe website
+    browser.tabs.update(tabID, {url: curUrl});
+  }
+});
 
 
 
