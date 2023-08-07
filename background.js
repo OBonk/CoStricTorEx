@@ -197,10 +197,15 @@ async function reportHTTP (url){
   }
 }
 
-async function checkDomain(domain) {
+async function checkDomain(domain,status) {
     const preHSTS = await primaryTest(domain);
     const preHTTP = await secondaryTest(domain);
-    const https = await checkHttpsLoad(domain);
+    let https;
+    if (status!=null){
+      https = status;
+    } else {
+      https = await checkHttpsLoad(domain);
+    }
     console.log(`Https res was ${https},preHSTS was ${preHSTS}, preHTTP was ${preHTTP}`)
     if (https != "HTTP"){
       // const HSTS = await hasHSTS(domain)
@@ -234,8 +239,61 @@ let currentDomain = null;
 let waitForLoad = false;
 let tabID = null;
 let curUrl = null;
+let probe = true;
+browser.webRequest.onHeadersReceived.addListener(
+  (details) => {
+    if (probe){
+      return;
+    }
+    return new Promise(async (resolve) => {
+      if (details.type === 'main_frame') {
+        let status;
+        for (var header of details.responseHeaders) {
+          if (header.name.toLowerCase() == 'strict-transport-security') {
+            status = 'HSTS';
+          }
+        } 
+        console.log(details.url)
+        if (!status && details.url.startsWith('https:')) {
+          status = 'HTTPS';
+        } else if (details.url.startsWith('http:')) {
+          status = 'HTTP';
+        }
+        const newDomain = getHostname(details.url);
+        if (newDomain !== currentDomain) {
+          curUrl = details.url
+          currentDomain = newDomain;
+          // redirect to holding page immediately
+          resolve({redirectUrl: browser.runtime.getURL("holding-page.html")});
+          let res = await checkDomain(currentDomain,status);
+          console.log("result is: "+res);
+          // based on the result, update the tab to go to the appropriate page
+          if (res === "HSTS" || res === "HTTPS" || res === "HTTP" )  {
+            browser.tabs.update(details.tabId, {url: details.url});
+          } else if(res==="Warning") {
+            tabID = details.tabId
+            browser.tabs.update(details.tabId, {url: browser.runtime.getURL("low-warn.html")});
+          }else if(res==="MITM") {
+            tabID = details.tabId
+            browser.tabs.update(details.tabId, {url: browser.runtime.getURL("high-warn.html")});
+          }
+        } else {
+          resolve({}); // continue with the request
+        }
+      } else {
+        resolve({}); // continue with the request
+      }
+    });
+  },
+  {urls: ['<all_urls>']},
+  ['blocking','responseHeaders']
+);
+
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
+    if(!probe){
+      return
+    }
     return new Promise(async (resolve) => {
       if (details.type === 'main_frame') {
         const newDomain = getHostname(details.url);
@@ -244,7 +302,7 @@ browser.webRequest.onBeforeRequest.addListener(
           currentDomain = newDomain;
           // redirect to holding page immediately
           resolve({redirectUrl: browser.runtime.getURL("holding-page.html")});
-          let res = await checkDomain(currentDomain);
+          let res = await checkDomain(currentDomain,null);
           console.log("result is: "+res);
           // based on the result, update the tab to go to the appropriate page
           if (res === "HSTS" || res === "HTTPS" || res === "HTTP" )  {
@@ -274,6 +332,11 @@ browser.runtime.onMessage.addListener((message) => {
   } else if (message.command === "proceedUnsafe") {
     // Proceed to the unsafe website
     browser.tabs.update(tabID, {url: curUrl});
+  } else if (message.command =="probe"){
+    probe = true;
+    console.log("Switched")
+  } else if (message.command == "silent"){
+    probe = false;
   }
 });
 

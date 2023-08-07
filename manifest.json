@@ -20,7 +20,8 @@
     "browser_action": {
       "default_icon": {
         "48": "icon.png"
-      }
+      },
+      "default_popup": "popup.html"
     },
     "web_accessible_resources": [
       "holding-page.html",
