@@ -36,6 +36,7 @@ async function fetchBloomFilters() {
             primaryThresholdModifier = json.primaryThresholdModifier
             secondaryThresholdModifier = json.secondaryThresholdModifier
         } else {
+            
             console.error('HTTP-Error: ' + response.status);
         }
         // Fetch the primary Bloom filter
@@ -66,6 +67,7 @@ async function fetchBloomFilters() {
 
     } catch (error) {
         console.error('Error fetching Bloom filters:', error);
+        console.log(response);
     }
 }
 
