@@ -67,21 +67,19 @@ async function fetchBloomFilters() {
 
     } catch (error) {
         console.error('Error fetching Bloom filters:', error);
-        console.log(response);
+        if (primaryBloomFilter&&secondaryBloomFilter){
+          browser.browserAction.setIcon({path: "iconFS.png"});
+          browser.browserAction.setTitle({title: "Failed to sync new bloomfilter with server"});
+        } else {
+          browser.browserAction.setIcon({path: "iconF.png"});
+          browser.browserAction.setTitle({title: "Failed to sync with server new identity required"});
+        }
     }
 }
 
 // Call fetchBloomFilters every 2 hours
 setInterval(fetchBloomFilters, 2 *60 *60 * 1000);
 
-
-// function reportHsts(domain) {
-//     primaryBloomFilter.add(domain, p, q);
-// }
-
-// function reportHttp(domain) {
-//     secondaryBloomFilter.add(domain, p, q);
-// }
 
 async function primaryTest(domain) {
     let res = await test(domain, primaryBloomFilter, primaryThresholdModifier);
@@ -116,14 +114,6 @@ function getHostname(url) {
     }
 }
 
-// P
-// TO DO:
-// Handling the probabilistic nature of Bloom filters (false positives and false negatives) - DONE
-// Implementing the noise-adding mechanisms for differential privacy - DONE
-// Communicating with the server to receive the latest Bloom filters and to submit reports - DONE
-// Handling the asynchronous nature of web requests in JavaScript - DONE
-// Ensuring the security and privacy of your users
-// Global Bloom filter variables - DONE
 
 async function checkHttpsLoad(url) {
   // Create HTTPS version of the URL
@@ -152,20 +142,7 @@ async function checkHttpsLoad(url) {
     }
 }
 
-// async function hasHSTS(url) {
-//   try {
-//     const response = await fetch(url, { method: 'HEAD' });
 
-//     if (response.headers.has('Strict-Transport-Security')) {
-//       return true;
-//     } else {
-//       return false;
-//     }
-//   } catch (error) {
-//     // If there's an error (e.g., network issue, website not reachable), return false
-//     return false;
-//   }
-// }
 
 async function reportHSTS (url){
   try {
@@ -221,16 +198,6 @@ async function reportHTTP (url){
 }
 
 async function checkDomain(domain) {
-    // Check the domain in the primary filter
-    // let primaryCount = primaryBloomFilter.test(domain);
-  
-    // If the domain is not in the primary filter, continue as normal
-    // if (primaryTest(domain)) {
-    //   return true // No action 
-    // } else {
-    //   const https = checkHttpsLoad(domain)
-    //   return https // attempt HTTPS load
-    // }
     const preHSTS = await primaryTest(domain);
     const preHTTP = await secondaryTest(domain);
     const https = await checkHttpsLoad(domain);
@@ -313,23 +280,6 @@ browser.runtime.onMessage.addListener((message) => {
 
 
 
-      
-      // if (waitForLoad){
-      //   console.log('Intercepted request to:', details.url);
-      //   if(getHostname(details.url)==currentDomain){
-      //     console.log("bingo")
-      //   }
-      //   if (details.url.startsWith('http://')) {
-      //     console.log('Insecure request:', details.url);
-      //     // Optionally, you can redirect the request to HTTPS
-      //     let redirectUrl = details.url.replace('http://', 'https://');
-      //     return {redirectUrl: redirectUrl};
-      //   }
-      // }
-  
-
-
-// write3 baoput no extresnions
 
   // BloomFilter
 const cryptoSubtle = window.crypto.subtle;
@@ -419,71 +369,3 @@ class BloomFilter {
       return [upper, lower];
   }
 }
-// class BloomFilter {
-//   constructor(filterSize, numHashes) {
-//       this.data = Array(filterSize).fill(0);
-//       this.filterSize = filterSize;
-//       this.numHashes = numHashes;
-//       this.count = 0;
-//   }
-
-//   async hashKernel(data) {
-//       const buffer = new TextEncoder().encode(data);
-//       const hashBuffer = await window.crypto.subtle.digest('SHA-256', buffer);
-//       const hashArray = new Uint8Array(hashBuffer);
-//       const hashNum = Long.fromBytes(hashArray, true);
-//       const upper = hashNum.and(Long.fromInt(0xffffffff)).toInt();
-//       const lower = hashNum.shru(32).and(Long.fromInt(0xffffffff)).toInt();
-//       return [upper, lower];
-//   }
-//   async add(data, p, q) {
-//     const [lower, upper] = await this.hashKernel(data);
-//     const adq = Math.floor(q * 4294967295.0);
-//     const adp = Math.floor(p * 4294967295.0);
-//     const newData = Array(this.filterSize).fill(0);
-//     let falseBits = 0;
-
-//     for (let i = 0; i < this.numHashes; i++) {
-//         const trueBit = ((lower + upper * i) % this.filterSize);
-//         newData[trueBit] += 1;
-//     }
-
-//     for (let i = 0; i < this.filterSize; i++) {
-//         const r = Math.floor(Math.random() * 4294967295.0);
-//         if (newData[i] === 1) {
-//             if (r >= adq) {
-//                 newData[i] = 0;
-//             }
-//         } else {
-//             if (r < adp) {
-//                 newData[i] = 1;
-//                 falseBits += 1;
-//             }
-//         }
-//         this.data[i] += newData[i];
-//     }
-//     this.count++;
-
-//     return this;
-//     }
-
-//     async test(data) {
-//         const [lower, upper] = await this.hashKernel(data);
-//         const result = Array(this.numHashes).fill(0);
-//         let min = 0;
-
-//         for (let i = 0; i < this.numHashes; i++) {
-//             const trueBit = ((lower + upper * i) % this.filterSize);
-//             result[i] = this.data[trueBit];
-//         }
-
-//         for (let i = 0; i < result.length; i++) {
-//             if (i === 0 || result[i] < min) {
-//                 min = result[i];
-//             }
-//         }
-
-//         return min;
-//     }
-// }
-
