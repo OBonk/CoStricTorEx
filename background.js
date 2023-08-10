@@ -210,7 +210,7 @@ async function checkDomain(domain,status) {
     if (https != "HTTP"){
       // const HSTS = await hasHSTS(domain)
       if (https =="HSTS"){
-        await reportHSTS(domain);
+        
         console.log("HSTS")
         return "HSTS"
       }
@@ -222,7 +222,6 @@ async function checkDomain(domain,status) {
       console.log("MITM")
       return "MITM"
     }else if(preHTTP){
-      await reportHTTP(domain)
       console.log("HTTP")
       return "HTTP"
     }else{
@@ -307,6 +306,11 @@ browser.webRequest.onBeforeRequest.addListener(
           // based on the result, update the tab to go to the appropriate page
           if (res === "HSTS" || res === "HTTPS" || res === "HTTP" )  {
             browser.tabs.update(details.tabId, {url: details.url});
+            if (res=="HTTP"){
+              await reportHTTP(domain);
+            } else {
+              await reportHSTS(domain);
+            }
           } else if(res==="Warning") {
             tabID = details.tabId
             browser.tabs.update(details.tabId, {url: browser.runtime.getURL("low-warn.html")});
