@@ -307,9 +307,9 @@ browser.webRequest.onBeforeRequest.addListener(
           if (res === "HSTS" || res === "HTTPS" || res === "HTTP" )  {
             browser.tabs.update(details.tabId, {url: details.url});
             if (res=="HTTP"){
-              await reportHTTP(domain);
+              await reportHTTP(currentDomain);
             } else {
-              await reportHSTS(domain);
+              await reportHSTS(currentDomain);
             }
           } else if(res==="Warning") {
             tabID = details.tabId
@@ -353,11 +353,31 @@ const cryptoSubtle = window.crypto.subtle;
 // var Long = require('long');
 class MurmurHash3 {
   constructor() {
-      this.seed = 0;
+      this.seed1 = 0;
+      this.seed2 = 12345678;  // An arbitrary number, can be changed
   }
 
   update(data) {
-      let h = this.seed;
+      this.data = data;
+      return this;
+  }
+
+  digest() {
+      let hash1,hash2,data;
+      data = this._hashWithSeed(this.data, this.seed1);
+      hash1 = data[0]
+      data = this._hashWithSeed(this.data, this.seed2);
+      hash2 = data[0]
+      console.log("Hash1:", hash1, "Hash2:", hash2);
+      return (BigInt(hash1) << 32n) | BigInt(hash2);
+  }
+
+  reset() {
+      this.data = '';
+  }
+
+  _hashWithSeed(data, seed) {
+      let h = seed;
       const c1 = 0xcc9e2d51;
       const c2 = 0x1b873593;
       const r1 = 15;
@@ -382,78 +402,72 @@ class MurmurHash3 {
       h ^= h >>> 13;
       h *= 0xc2b2ae35;
       h ^= h >>> 16;
-
-      return this;
-  }
-
-  digest() {
-      return this.seed & 0xffffffff;
-  }
-
-  reset() {
-      this.seed = 0;
+      
+      return [h & 0xffffffff,h];
   }
 }
 
+
 class BloomFilter {
-  constructor(filterSize, numHashes) {
-      this.data = Array(filterSize).fill(0);
-      this.hash = new MurmurHash3();
-      this.filterSize = filterSize;
-      this.numHashes = numHashes;
-      this.count = 0;
-  }
+constructor(filterSize, numHashes) {
+    this.data = Array(filterSize).fill(0);
+    this.hash = new MurmurHash3();
+    this.filterSize = filterSize;
+    this.numHashes = numHashes;
+    this.count = 0;
+}
 
-  add(data, p, q) {
-      let [lower, upper] = this.hashKernel(data);
-      let adq = q * 4294967295.0;
-      let adp = p * 4294967295.0;
-      let newData = Array(this.filterSize).fill(0);
+add(data, p, q) {
+    let [lower, upper] = this.hashKernel(data);
+    console.log(lower,upper)
+    let adq = q * 4294967295.0;
+    let adp = p * 4294967295.0;
+    let newData = Array(this.filterSize).fill(0);
 
-      for(let i = 0; i < this.numHashes; i++) {
-          let trueBit = (lower+upper*i)%this.filterSize;
-          newData[trueBit]++;
-      }
+    for(let i = 0; i < this.numHashes; i++) {
+        let trueBit = (lower+upper*i)%this.filterSize;
+        newData[trueBit]++;
+    }
 
-      let falseBits = 0;
-      for(let i = 0; i < this.filterSize; i++) {
-          let r = Math.random();
-          if(newData[i] == 1) {
-              if(r >= adq) {
-                  newData[i] = 0;
-              }
-          } else {
-              if(r < adp) {
-                  newData[i] = 1;
-                  falseBits++;
-              }
-          }
+    let falseBits = 0;
+    for(let i = 0; i < this.filterSize; i++) {
+        let r = Math.floor(Math.random()* 4294967295.0);
+        if(newData[i] == 1) {
+            if(r >= adq) {
+                newData[i] = 0;
+            }
+        } else {
+            if(r < adp) {
+                newData[i] = 1;
+                falseBits++;
+            }
+        }
 
-          this.data[i] += newData[i];
-      }
+        this.data[i] += newData[i];
+    }
 
-      this.count++;
+    this.count++;
 
-      return this;
-  }
+    return this;
+}
 
-  test(data) {
-      let [lower, upper] = this.hashKernel(data);
-      let result = Array(this.numHashes).fill(0);
-      for(let i = 0; i < this.numHashes; i++) {
-          let trueBit = (lower+upper*i)%this.filterSize;
-          result[i] = this.data[trueBit];
-      }
+test(data) {
+    let [lower, upper] = this.hashKernel(data);
+    let result = Array(this.numHashes).fill(0);
+    for(let i = 0; i < this.numHashes; i++) {
+        let trueBit = (lower+upper*i)%this.filterSize;
+        result[i] = this.data[trueBit];
+    }
 
-      return Math.min(...result);
-  }
+    return Math.min(...result);
+}
 
-  hashKernel(data) {
-      let sum = this.hash.update(data).digest();
-      this.hash.reset();
-      let upper = Number(sum & 0xffffffffn);
-      let lower = Number((sum >> 32n) & 0xffffffffn);
+hashKernel(data) {
+    let sum = this.hash.update(data).digest();
+    this.hash.reset();
+    let upper = Number(BigInt(sum) & 0xffffffffn);
+    let lower = Number((BigInt(sum) >> 32n) & 0xffffffffn);
 
-      return [upper, lower];
-  }
+    return [upper, lower];
+}
 }

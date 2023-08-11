@@ -34,16 +34,12 @@ if __name__ == "__main__":
     hsts_data = read_data_from_file("hsts_enabled.txt")
     http_data = read_data_from_file("http_only.txt")
     
-    avg_num_websites = (len(hsts_data) + len(http_data)) // 2
-
-    # Sample the data using Zipfian distribution
-    hsts_sampled = zipfian_sample(hsts_data, avg_num_websites)
-    http_sampled = zipfian_sample(http_data, avg_num_websites)
+    total_reports = 5000
+    hsts_sampled = zipfian_sample(hsts_data, total_reports // 2)
+    http_sampled = zipfian_sample(http_data, total_reports // 2)
 
     # Ensure the last item in both lists is only reported once
-    hsts_sampled = list(set(hsts_sampled) - {hsts_data[-1]})
-    http_sampled = list(set(http_sampled) - {http_data[-1]})
-    combined_sampled = hsts_sampled + http_sampled + [hsts_data[-1], http_data[-1]]
+    combined_sampled = hsts_sampled + http_sampled 
 
     payload = {
         "filterSize": 40000,
@@ -51,7 +47,7 @@ if __name__ == "__main__":
         "httpData": http_sampled,
         "p": p(0.99,7),
         "q": 0.99,
-        "numWebsites": avg_num_websites,
+        "numWebsites": len(combined_sampled),
         "ptm": 0.045,
         "stm": 0.07,
     }

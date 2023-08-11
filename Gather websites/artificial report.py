@@ -13,8 +13,8 @@ def post_to_api(url, data):
         return None
     
 url = "https://report-server.obonk.repl.co/report"
-payload = {"dom":"tupalo.com","type":1}
-payload2 = {"dom":"tupalo.com","type":2}
+payload = {"dom":"facebook.com","type":1}
+payload2 = {"dom":"faqs.org","type":1}
 data = [payload]*500
 for i in range(300):
     post_to_api(url,payload)
