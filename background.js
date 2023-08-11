@@ -269,6 +269,11 @@ browser.webRequest.onHeadersReceived.addListener(
           // based on the result, update the tab to go to the appropriate page
           if (res === "HSTS" || res === "HTTPS" || res === "HTTP" )  {
             browser.tabs.update(details.tabId, {url: details.url});
+            if (res=="HTTP"){
+              reportHTTP(currentDomain);
+            } else {
+              reportHSTS(currentDomain);
+            }
           } else if(res==="Warning") {
             tabID = details.tabId
             browser.tabs.update(details.tabId, {url: browser.runtime.getURL("low-warn.html")});
@@ -307,9 +312,9 @@ browser.webRequest.onBeforeRequest.addListener(
           if (res === "HSTS" || res === "HTTPS" || res === "HTTP" )  {
             browser.tabs.update(details.tabId, {url: details.url});
             if (res=="HTTP"){
-              await reportHTTP(currentDomain);
+              reportHTTP(currentDomain);
             } else {
-              await reportHSTS(currentDomain);
+              reportHSTS(currentDomain);
             }
           } else if(res==="Warning") {
             tabID = details.tabId
