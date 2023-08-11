@@ -351,33 +351,54 @@ browser.runtime.onMessage.addListener((message) => {
   // BloomFilter
 const cryptoSubtle = window.crypto.subtle;
 // var Long = require('long');
-class FnvHash {
+class MurmurHash3 {
   constructor() {
-      this.hash = 0xcbf29ce484222325n;
+      this.seed = 0;
   }
 
   update(data) {
+      let h = this.seed;
+      const c1 = 0xcc9e2d51;
+      const c2 = 0x1b873593;
+      const r1 = 15;
+      const r2 = 13;
+      const m = 5;
+      const n = 0xe6546b64;
+
       for(let i = 0; i < data.length; i++) {
-          this.hash ^= BigInt(data.charCodeAt(i));
-          this.hash *= 0x100000001b3n;
+          let k = data.charCodeAt(i);
+          k *= c1;
+          k = (k << r1) | (k >>> (32 - r1));
+          k *= c2;
+
+          h ^= k;
+          h = (h << r2) | (h >>> (32 - r2));
+          h = h * m + n;
       }
+
+      h ^= data.length;
+      h ^= h >>> 16;
+      h *= 0x85ebca6b;
+      h ^= h >>> 13;
+      h *= 0xc2b2ae35;
+      h ^= h >>> 16;
 
       return this;
   }
 
   digest() {
-      return this.hash & 0xffffffffffffffffn;
+      return this.seed & 0xffffffff;
   }
 
   reset() {
-      this.hash = 0xcbf29ce484222325n;
+      this.seed = 0;
   }
 }
 
 class BloomFilter {
   constructor(filterSize, numHashes) {
       this.data = Array(filterSize).fill(0);
-      this.hash = new FnvHash();
+      this.hash = new MurmurHash3();
       this.filterSize = filterSize;
       this.numHashes = numHashes;
       this.count = 0;

@@ -19,6 +19,60 @@ class DJB2 {
     }
 }
 
+class CityHash {
+    constructor() {
+        this.hash = 0;
+    }
+
+    update(data) {
+        let len = data.length;
+        for(let i = 0; i < len; i++) {
+            let code = data.charCodeAt(i);
+            this.hash = BigInt(this.hash)^BigInt(code);
+            this.hash = BigInt(this.hash) * 0x9ddfea08eb382d69n;
+            this.hash ^= this.hash >> 33n;
+            this.hash *= 0xc4ceb9fe1a85ec53n;
+            this.hash ^= this.hash >> 33n;
+        }
+        return this;
+    }
+
+    digest() {
+        return this.hash & 0xffffffffffffffffn;
+    }
+
+    reset() {
+        this.hash = 0;
+    }
+}
+
+class SpookyHash {
+    constructor() {
+        this.hash1 = 0x6a09e667n;
+        this.hash2 = 0xbb67ae85n;
+    }
+
+    update(data) {
+        let len = data.length;
+        for(let i = 0; i < len; i++) {
+            let code = data.charCodeAt(i);
+            this.hash1 = (this.hash1 + BigInt(code)) * 0x9e3779b1n;
+            this.hash2 ^= this.hash1;
+        }
+        return this;
+    }
+
+    digest() {
+        return (this.hash1 ^ (this.hash2 << 32n)) & 0xffffffffffffffffn;
+    }
+
+    reset() {
+        this.hash1 = 0x6a09e667n;
+        this.hash2 = 0xbb67ae85n;
+    }
+}
+
+
 class MurmurHash3 {
     constructor() {
         this.seed = 0;
@@ -149,33 +203,71 @@ class FnvHash {
     }
   }
 
-const fs = require('fs');
+  function test(domain, bloomFilter, thresholdMod) {
+    let count = bloomFilter.test(domain);
+    let numInsertions = bloomFilter.count;
+    let adjustedCount = (count - p * numInsertions)/(q-p);
+    let threshold = (numInsertions/numWebsites) * thresholdMod;
+    return adjustedCount >= threshold;
+}
+const fs = require("fs")
+// Load HSTS websites
+const hstsWebsites = fs.readFileSync('hsts_enabled.txt', 'utf8').split('\n').filter(website => website.trim() !== '');
+
+function getRandomWebsite() {
+    return hstsWebsites[Math.floor(Math.random() * hstsWebsites.length)];
+}
 
 const buf = JSON.parse(fs.readFileSync('primaryBloomFilter.json', 'utf8'), (_, v) => typeof v === 'string' && v.endsWith('n') ? BigInt(v.slice(0, -1)) : v);
 let primaryBloomFilter = new BloomFilter(buf.filterSize, buf.numHashes);
-primaryBloomFilter.data = buf.data;
-primaryBloomFilter.count = buf.count;
 
 const params = JSON.parse(fs.readFileSync('parameters.json'));
 const { p, q, numWebsites, ptm, stm } = params;
 
-const hashClasses = [FnvHash, DJB2, MurmurHash3];
+const hashClasses = [CityHash, FnvHash, DJB2, MurmurHash3,SpookyHash];
 const timings = [];
 
 for(let HashClass of hashClasses) {
     primaryBloomFilter.hash = new HashClass();
+    process.stdout.write("Running "+HashClass.name+" ");
+    const results = {
+        time: [],
+        min_inserts: [],
+        total_pos: []
+    };
 
-    const start = Date.now();
-    for(let i = 0; i < 1000; i++) {
-        primaryBloomFilter.add("testData" + i, p, q);
+    for(let run = 0; run < 20; run++) {
+        process.stdout.write(".");
+        primaryBloomFilter.data = Array(buf.filterSize).fill(0);// Reset data
+        primaryBloomFilter.count = buf.count; // Reset count
+
+        // Populate the Bloom filter with 10,000 random websites
+        for(let i = 0; i < 10000; i++) {
+            primaryBloomFilter.add(getRandomWebsite(), p, q);
+        }
+
+        let ret = [];
+        const start = Date.now();
+        for(let i = 0; i < 10000; i++) {
+            primaryBloomFilter.add("testData" + i, p, q);
+            
+        }
+        for(let i=0; i<10000;i++){
+            if (test("testData"+i, primaryBloomFilter, ptm)) {
+                ret.push(i);
+            }
+        }
+        const end = Date.now();
+        results.time.push(end - start);
+        results.min_inserts.push(ret[0] || null);
+        results.total_pos.push(ret.length);
     }
-    for(let i = 0; i < 1000; i++) {
-        primaryBloomFilter.test("testData" + i);
-    }
-    const end = Date.now();
-    timings.push({
+    console.log("\n")
+    timings.push({  
         hash: HashClass.name,
-        time: end - start
+        avgTime: results.time.reduce((a, b) => a + b, 0) / 20,
+        avgMinInserts: results.min_inserts.filter(v => v !== null).reduce((a, b) => a + b, 0) / results.min_inserts.length,
+        avgTotalPos: results.total_pos.reduce((a, b) => a + b, 0) / 20
     });
 }
 
