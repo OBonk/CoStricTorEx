@@ -11,6 +11,8 @@
       "webRequest",
       "webRequestBlocking",
       "tabs",
+      "storage",
+      "downloads",
       "<all_urls>"
     ],
     "background": {
