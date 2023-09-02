@@ -1,1 +1,0 @@
-window.Long = require('long');
