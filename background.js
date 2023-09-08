@@ -63,8 +63,7 @@ async function fetchBloomFilters() {
         } else {
           console.error('HTTP-Error: ' + response.status);
         }
-
-
+        browser.browserAction.setIcon({path: "icon.png"});
     } catch (error) {
         console.error('Error fetching Bloom filters:', error);
         if (primaryBloomFilter&&secondaryBloomFilter){
@@ -238,22 +237,30 @@ let currentDomain = null;
 let waitForLoad = false;
 let tabID = null;
 let curUrl = null;
-let probe = true;
+let probe = "probe";
+let TLS = false
+
 browser.webRequest.onHeadersReceived.addListener(
   (details) => {
-    if (probe){
+    if (probe == "probe" || probe==="control"){
       return;
     }
     return new Promise(async (resolve) => {
       if (details.type === 'main_frame') {
+        
         let status;
         for (var header of details.responseHeaders) {
           if (header.name.toLowerCase() == 'strict-transport-security') {
             status = 'HSTS';
-          }
+           } 
         } 
         console.log(details.url)
-        if (!status && details.url.startsWith('https:')) {
+        if (TLS){
+          browser.webRequest.getSecurityInfo(details.requestId, {})
+            .then(securityInfo => {
+              status = securityInfo;
+            });
+        } else if (!status && details.url.startsWith('https:')) {
           status = 'HTTPS';
         } else if (details.url.startsWith('http:')) {
           status = 'HTTP';
@@ -295,7 +302,11 @@ browser.webRequest.onHeadersReceived.addListener(
 
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if(!probe){
+    // if (details.type === 'main_frame' && getHostname(details.url) != currentDomain){
+    //   console.log("ping")
+    //   requestStartTimes[getHostname(details.url)] = Date.now();
+    // }
+    if(probe==="silent" || probe==="control"){
       return
     }
     return new Promise(async (resolve) => {
@@ -342,11 +353,20 @@ browser.runtime.onMessage.addListener((message) => {
     // Proceed to the unsafe website
     browser.tabs.update(tabID, {url: curUrl});
   } else if (message.command =="probe"){
-    probe = true;
+    probe = "probe";
     console.log("Switched")
   } else if (message.command == "silent"){
-    probe = false;
+    probe = "silent";
+  }else if (message.command =="TLS+"){
+    TLS = true;
+  }else if (message.command =="TLS-"){
+    TLS = false;
   }
+  // } else if (message.command =="off"){
+  //   probe = "control";
+  // } else if (message.command == "save"){
+  //   saveToCSV();
+  // }
 });
 
 
@@ -373,7 +393,6 @@ class MurmurHash3 {
       hash1 = data[0]
       data = this._hashWithSeed(this.data, this.seed2);
       hash2 = data[0]
-      console.log("Hash1:", hash1, "Hash2:", hash2);
       return (BigInt(hash1) << 32n) | BigInt(hash2);
   }
 
@@ -476,3 +495,96 @@ hashKernel(data) {
     return [upper, lower];
 }
 }
+
+// For use when timing:
+// Function to save data to CSV from storage
+// let requestStartTimes = {};
+// let loopCount = 0;
+// let currentSiteIndex = 0;
+// let testSites = ["https://OlliBrew2.pythonanywhere.com","https://valentines.obonk.repl.co/","https://OlliBrew.pythonanywhere.com","https://list-fixing.obonk.repl.co","https://temporary-api.obonk.repl.co"]
+// // For timing usage
+// browser.webRequest.onCompleted.addListener(
+//  async (details) =>
+//     {
+//       console.log("pong")
+//       if (details.type !== "main_frame"){
+//        return; 
+//       }
+//       let startTime = requestStartTimes[getHostname(details.url)];
+//     if (startTime) {
+//       let elapsedTime = Date.now() - startTime;
+//       let mode = probe === true ? "probe" : probe === false ? "silent" : "control";
+//       console.log("time was: "+elapsedTime)
+//       storeData(elapsedTime, mode);
+//       await onTimingCompleted();
+//       delete requestStartTimes[getHostname(details.url)];  // Clear recorded start time
+//     }
+//   },
+//     {urls: ["<all_urls>"]} 
+//   )
+// function saveToCSV() {
+//   browser.storage.local.get("requestData", function(data) {
+//     let csvContent = "data:text/csv;charset=utf-8,ElapsedTime,Mode\n";
+    
+//     if (data.requestData && data.requestData.length > 0) {
+//       data.requestData.forEach(item => {
+//         csvContent += `${item.elapsedTime},${item.mode}\n`;
+//       });
+
+//             // Create a blob from your CSV data:
+//       let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+//       // Convert the blob to an Object URL:
+//       let url = URL.createObjectURL(blob);
+
+//       // Download the Object URL:
+//       browser.downloads.download({
+//           url: url,
+//           filename: 'data.csv'
+//       });
+
+//       // Revoke the Object URL after the download to free up resources:
+//       browser.downloads.onChanged.addListener((delta) => {
+//           if(delta.state && delta.state.current === "complete") {
+//               URL.revokeObjectURL(url);
+//           }
+//       });
+
+//       browser.storage.local.remove("requestData");  // Clear stored data after saving
+//     }
+//   });
+// }
+
+// function storeData(elapsedTime, mode) {
+//   browser.storage.local.get("requestData", function(data) {
+//     let requestData = data.requestData || [];
+//     requestData.push({ elapsedTime: elapsedTime, mode: mode });
+//     browser.storage.local.set({ requestData: requestData });
+//   });
+// }
+// async function onTimingCompleted() {
+//   loopCount++;
+//   console.log("------Loop count is: "+loopCount+" mode is: "+probe)
+//   // If we've looped 100 times, update mode and reset counter
+//   if (loopCount >= 50) {
+//       console.log("100")
+
+//       if (probe === 'probe') {
+//           probe = "silent";
+//       } else if (probe === 'silent' && !TLS) {
+//           TLS = true;
+//       } else if (TLS){
+//         probe = "control"
+//       } else if (probe === 'control') {
+//           // If you have anything to do when all tests are finished, do it here
+//           saveToCSV();
+//           return; // end the process
+//       }
+//       loopCount = 0;
+//   }
+//   console.log("hello?")
+
+//   // Move to the next site and open in a new tab
+//   currentSiteIndex = (currentSiteIndex + 1) % testSites.length;
+//   browser.tabs.update({ url: testSites[currentSiteIndex] });
+// }

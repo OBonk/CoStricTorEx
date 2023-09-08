@@ -75,11 +75,31 @@ class SpookyHash {
 
 class MurmurHash3 {
     constructor() {
-        this.seed1 = 0;
+        this.seed11 = 0;
+        this.seed2 = 12345678;  // An arbitrary number, can be changed
         this.seed2 = 12345678;  // An arbitrary number, can be changed
     }
-  
+    
     update(data) {
+        this.data = data;
+        return this;
+    }
+  
+    digest() {
+        let hash1,hash2,data;
+        data = this._hashWithSeed(this.data, this.seed1);
+        hash1 = data[0]
+        data = this._hashWithSeed(this.data, this.seed2);
+        hash2 = data[0]
+        return (BigInt(hash1) << 32n) | BigInt(hash2);
+    }
+  
+    reset() {
+        this.data = '';
+    }
+  
+    _hashWithSeed(data, seed) {
+        let h = seed;
         this.data = data;
         return this;
     }
@@ -105,18 +125,18 @@ class MurmurHash3 {
         const r2 = 13;
         const m = 5;
         const n = 0xe6546b64;
-  
+    
         for(let i = 0; i < data.length; i++) {
             let k = data.charCodeAt(i);
             k *= c1;
             k = (k << r1) | (k >>> (32 - r1));
             k *= c2;
-  
+    
             h ^= k;
             h = (h << r2) | (h >>> (32 - r2));
             h = h * m + n;
         }
-  
+    
         h ^= data.length;
         h ^= h >>> 16;
         h *= 0x85ebca6b;
@@ -125,9 +145,12 @@ class MurmurHash3 {
         h ^= h >>> 16;
         
         return [h & 0xffffffff,h];
+        
+        return [h & 0xffffffff,h];
     }
-  }
-  
+    }
+    
+
 
 class FnvHash {
     constructor() {
@@ -174,7 +197,7 @@ class FnvHash {
   
         let falseBits = 0;
         for(let i = 0; i < this.filterSize; i++) {
-            let r = Math.floor(Math.random()* 4294967295.0);
+            let r = Math.floor(Math.floor(Math.random()* 4294967295.0)* 4294967295.0);
             if(newData[i] == 1) {
                 if(r >= adq) {
                     newData[i] = 0;
@@ -262,6 +285,9 @@ for(let HashClass of hashClasses) {
         const start = Date.now();
         for(let i = 0; i < 10000; i++) {
             primaryBloomFilter.add("testData", p, q);
+            
+        }
+        for(let i=0; i<10000;i++){
             if (test("testData", primaryBloomFilter, ptm)) {
                 ret.push(i);
             }

@@ -11,10 +11,12 @@
       "webRequest",
       "webRequestBlocking",
       "tabs",
+      "storage",
+      "downloads",
       "<all_urls>"
     ],
     "background": {
-      "scripts": ["background.js","long_bundled.js"],
+      "scripts": ["background.js"],
       "persistent": true
     },
     "browser_action": {
