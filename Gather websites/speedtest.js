@@ -75,47 +75,59 @@ class SpookyHash {
 
 class MurmurHash3 {
     constructor() {
-        this.seed = 0;
+        this.seed1 = 0;
+        this.seed2 = 12345678;  // An arbitrary number, can be changed
     }
-
+  
     update(data) {
-        let h = this.seed;
+        this.data = data;
+        return this;
+    }
+  
+    digest() {
+        let hash1,hash2,data;
+        data = this._hashWithSeed(this.data, this.seed1);
+        hash1 = data[0]
+        data = this._hashWithSeed(this.data, this.seed2);
+        hash2 = data[0]
+        return (BigInt(hash1) << 32n) | BigInt(hash2);
+    }
+  
+    reset() {
+        this.data = '';
+    }
+  
+    _hashWithSeed(data, seed) {
+        let h = seed;
         const c1 = 0xcc9e2d51;
         const c2 = 0x1b873593;
         const r1 = 15;
         const r2 = 13;
         const m = 5;
         const n = 0xe6546b64;
-
+  
         for(let i = 0; i < data.length; i++) {
             let k = data.charCodeAt(i);
             k *= c1;
             k = (k << r1) | (k >>> (32 - r1));
             k *= c2;
-
+  
             h ^= k;
             h = (h << r2) | (h >>> (32 - r2));
             h = h * m + n;
         }
-
+  
         h ^= data.length;
         h ^= h >>> 16;
         h *= 0x85ebca6b;
         h ^= h >>> 13;
         h *= 0xc2b2ae35;
         h ^= h >>> 16;
-
-        return this;
+        
+        return [h & 0xffffffff,h];
     }
-
-    digest() {
-        return this.seed & 0xffffffff;
-    }
-
-    reset() {
-        this.seed = 0;
-    }
-}
+  }
+  
 
 class FnvHash {
     constructor() {
@@ -162,7 +174,7 @@ class FnvHash {
   
         let falseBits = 0;
         for(let i = 0; i < this.filterSize; i++) {
-            let r = Math.random();
+            let r = Math.floor(Math.random()* 4294967295.0);
             if(newData[i] == 1) {
                 if(r >= adq) {
                     newData[i] = 0;
@@ -249,18 +261,15 @@ for(let HashClass of hashClasses) {
         let ret = [];
         const start = Date.now();
         for(let i = 0; i < 10000; i++) {
-            primaryBloomFilter.add("testData" + i, p, q);
-            
-        }
-        for(let i=0; i<10000;i++){
-            if (test("testData"+i, primaryBloomFilter, ptm)) {
+            primaryBloomFilter.add("testData", p, q);
+            if (test("testData", primaryBloomFilter, ptm)) {
                 ret.push(i);
             }
+            
         }
         const end = Date.now();
         results.time.push(end - start);
         results.min_inserts.push(ret[0] || null);
-        results.total_pos.push(ret.length);
     }
     console.log("\n")
     timings.push({  
