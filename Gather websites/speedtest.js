@@ -75,31 +75,11 @@ class SpookyHash {
 
 class MurmurHash3 {
     constructor() {
-        this.seed11 = 0;
-        this.seed2 = 12345678;  // An arbitrary number, can be changed
+        this.seed1 = 0;
         this.seed2 = 12345678;  // An arbitrary number, can be changed
     }
-    
+  
     update(data) {
-        this.data = data;
-        return this;
-    }
-  
-    digest() {
-        let hash1,hash2,data;
-        data = this._hashWithSeed(this.data, this.seed1);
-        hash1 = data[0]
-        data = this._hashWithSeed(this.data, this.seed2);
-        hash2 = data[0]
-        return (BigInt(hash1) << 32n) | BigInt(hash2);
-    }
-  
-    reset() {
-        this.data = '';
-    }
-  
-    _hashWithSeed(data, seed) {
-        let h = seed;
         this.data = data;
         return this;
     }
@@ -125,18 +105,18 @@ class MurmurHash3 {
         const r2 = 13;
         const m = 5;
         const n = 0xe6546b64;
-    
+  
         for(let i = 0; i < data.length; i++) {
             let k = data.charCodeAt(i);
             k *= c1;
             k = (k << r1) | (k >>> (32 - r1));
             k *= c2;
-    
+  
             h ^= k;
             h = (h << r2) | (h >>> (32 - r2));
             h = h * m + n;
         }
-    
+  
         h ^= data.length;
         h ^= h >>> 16;
         h *= 0x85ebca6b;
@@ -145,11 +125,8 @@ class MurmurHash3 {
         h ^= h >>> 16;
         
         return [h & 0xffffffff,h];
-        
-        return [h & 0xffffffff,h];
     }
-    }
-    
+  }
 
 
 class FnvHash {
